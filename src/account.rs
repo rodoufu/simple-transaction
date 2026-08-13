@@ -1,7 +1,7 @@
 use crate::{ClientId, TransactionId};
 use anyhow::{Context, Result};
 
-pub(super) const ACCOUNT_MULTIPLIER: f64 = 10_000.0;
+pub(super) const ACCOUNT_MULTIPLIER: f64 = 1e4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AccountTransactionDisppute {
@@ -35,6 +35,10 @@ impl AccountTransaction {
     }
 }
 
+/// Account represents the data for eache client.
+/// Internally it uses `u64` instead of `f64` to avoid representations issues such as `0.1` not
+/// being possible to exactly represent as a `f64`.
+/// `ACCOUNT_MULTIPLIER` is used to convert the `f64` to `u64` using the expected precision.
 #[derive(Debug, Clone)]
 pub struct Account {
     // Client identification
@@ -82,14 +86,13 @@ impl Account {
         self.locked
     }
 
-    pub(crate) fn deposit(&mut self, id: TransactionId, amount: u64) -> Result<()> {
+    pub(crate) fn deposit(&mut self, id: TransactionId, amount: u64) {
         self.total += amount;
         self.transactions.push(AccountTransaction::Deposit {
             id,
             amount,
             dispute: AccountTransactionDisppute::None,
         });
-        Ok(())
     }
 
     pub(crate) fn withdrawal(&mut self, id: TransactionId, amount: u64) -> Result<()> {
@@ -152,7 +155,7 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::DisputeInitiated),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
+                anyhow::ensure!(self.held >= *amount, "not enough balance for dispute");
                 self.held -= *amount;
                 *dispute = AccountTransactionDisppute::Resolved;
             }
@@ -163,7 +166,7 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::DisputeInitiated),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.held >= *amount, "not enough held for dispute");
+                anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
                 self.held += *amount;
                 *dispute = AccountTransactionDisppute::Resolved;
             }
@@ -198,7 +201,7 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::Resolved),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.held >= *amount, "not enough held for dispute");
+                anyhow::ensure!(self.total >= *amount, "not enough held for dispute");
                 self.total += *amount;
                 *dispute = AccountTransactionDisppute::ChargeBackOccurred;
                 self.locked = true;

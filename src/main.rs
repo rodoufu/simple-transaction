@@ -1,10 +1,12 @@
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 use simple_transaction::{Transaction, account_store::AccountStore};
-use tracing::error;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 fn main() -> Result<()> {
     tracing_subscriber::registry()
+        .with(fmt::layer().with_writer(std::io::stderr))
         .with(EnvFilter::from_default_env())
         .init();
 
@@ -15,23 +17,27 @@ fn main() -> Result<()> {
         .trim(csv::Trim::All)
         .from_path(args.get(1).context("file name not provided")?)?;
 
-    let mut account_store = AccountStore::default();
-
-    for (line, result) in reader.deserialize().enumerate() {
-        let result: Result<simple_transaction::csv::Transaction> = result.context("parsing line");
-        let Ok(transaction) = result.inspect_err(|err| error!(?err, line, "unexpected format"))
-        else {
-            continue;
-        };
-        let Ok(transaction) = Transaction::try_from(transaction)
-            .inspect_err(|err| error!(?err, line, "problem converting transaction"))
-        else {
-            continue;
-        };
-        let _ = account_store
-            .apply(transaction)
-            .inspect_err(|err| error!(?err, line, "unable to apply transasction"));
-    }
+    let account_store = AccountStore::default();
+    let transactions = reader.deserialize::<simple_transaction::csv::Transaction>();
+    let mut parsing_line_error = 0;
+    let mut convert_error = 0;
+    let mut processed_lines = 0;
+    let start = Instant::now();
+    let result = account_store.apply_transactions(transactions.filter_map(|x| {
+        processed_lines += 1;
+        Transaction::try_from(x.inspect_err(|_| parsing_line_error += 1).ok()?)
+            .inspect_err(|_| convert_error += 1)
+            .ok()
+    }));
+    let processing_time = start.elapsed();
+    tracing::info!(
+        processed_lines,
+        parsing_line_error,
+        convert_error,
+        err = ?result.err(),
+        ?processing_time,
+        "finished applying transactions"
+    );
 
     account_store
         .write(std::io::stdout())

@@ -2,12 +2,21 @@ use crate::account::ACCOUNT_MULTIPLIER;
 
 pub mod account;
 pub mod account_store;
+#[cfg(test)]
+mod account_store_tests;
+#[cfg(test)]
+mod account_tests;
 pub mod csv;
+#[cfg(test)]
+mod csv_tests;
+#[cfg(test)]
+mod lib_tests;
 
 pub type ClientId = u16;
 pub type TransactionId = u32;
 
 #[allow(dead_code)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Dispute {
     client: u16,
@@ -15,6 +24,7 @@ pub struct Dispute {
 }
 
 #[allow(dead_code)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Resolve {
     client: u16,
@@ -22,12 +32,14 @@ pub struct Resolve {
 }
 
 #[allow(dead_code)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Chargeback {
     client: u16,
     transaction_id: TransactionId,
 }
 
+#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
 pub enum Transaction {
     /// A deposit is a credit to the client's asset account, meaning it should increase the available and
@@ -77,15 +89,15 @@ impl Transaction {
         Self::Deposit {
             client,
             transaction_id,
-            amount: (amount * ACCOUNT_MULTIPLIER) as u64,
+            amount: (amount * ACCOUNT_MULTIPLIER + 0.5) as u64,
         }
     }
 
-    pub fn withdrawwal(client: ClientId, transaction_id: TransactionId, amount: f64) -> Self {
+    pub fn withdrawal(client: ClientId, transaction_id: TransactionId, amount: f64) -> Self {
         Self::Withdrawal {
             client,
             transaction_id,
-            amount: (amount * ACCOUNT_MULTIPLIER) as u64,
+            amount: (amount * ACCOUNT_MULTIPLIER + 0.5) as u64,
         }
     }
 }

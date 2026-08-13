@@ -19,12 +19,12 @@ pub(crate) enum TransactionType {
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Transaction {
     #[serde(rename = "type")]
-    transaction_type: TransactionType,
+    pub(super) transaction_type: TransactionType,
     #[serde(rename = "client")]
-    client_id: u16,
+    pub(super) client_id: u16,
     #[serde(rename = "tx")]
-    transaction_id: TransactionId,
-    amount: Option<f64>,
+    pub(super) transaction_id: TransactionId,
+    pub(super) amount: Option<f64>,
 }
 
 impl TryFrom<Transaction> for crate::Transaction {
@@ -40,7 +40,7 @@ impl TryFrom<Transaction> for crate::Transaction {
                 value.transaction_id,
                 amount,
             )),
-            (TransactionType::Withdrawal, Some(amount)) => Ok(crate::Transaction::withdrawwal(
+            (TransactionType::Withdrawal, Some(amount)) => Ok(crate::Transaction::withdrawal(
                 value.client_id,
                 value.transaction_id,
                 amount,
@@ -66,88 +66,6 @@ impl TryFrom<Transaction> for crate::Transaction {
                     client: value.client_id,
                     transaction_id: value.transaction_id,
                 }))
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-
-mod test {
-    use csv::{Reader, Writer};
-
-    use crate::csv::Transaction;
-
-    #[test]
-    fn serialize_transaction() {
-        let transaction = Transaction {
-            transaction_type: crate::csv::TransactionType::Deposit,
-            client_id: 1,
-            transaction_id: 1,
-            amount: Some(1.0),
-        };
-
-        let mut writer = Writer::from_writer(vec![]);
-        writer.serialize(transaction).expect("ok");
-
-        let inner_bytes = writer.into_inner().expect("ok");
-        let csv_string = String::from_utf8(inner_bytes).expect("ok");
-
-        assert_eq!(csv_string, "type,client,tx,amount\ndeposit,1,1,1.0\n");
-    }
-
-    #[test]
-    fn deserialize_transaction() {
-        struct Test {
-            csv: &'static str,
-            transaction: Transaction,
-        }
-        let tests = [
-            Test {
-                csv: r#"type,client,tx,amount
-deposit,1,1,1.0"#,
-                transaction: Transaction {
-                    transaction_type: crate::csv::TransactionType::Deposit,
-                    client_id: 1,
-                    transaction_id: 1,
-                    amount: Some(1.0),
-                },
-            },
-            Test {
-                csv: r#"deposit,1,1,1.0"#,
-                transaction: Transaction {
-                    transaction_type: crate::csv::TransactionType::Deposit,
-                    client_id: 1,
-                    transaction_id: 1,
-                    amount: Some(1.0),
-                },
-            },
-            Test {
-                csv: r#"type, client, tx, amount
-deposit, 1, 1, 1.0"#,
-                transaction: Transaction {
-                    transaction_type: crate::csv::TransactionType::Deposit,
-                    client_id: 1,
-                    transaction_id: 1,
-                    amount: Some(1.0),
-                },
-            },
-            Test {
-                csv: r#"deposit, 1, 1, 1.0"#,
-                transaction: Transaction {
-                    transaction_type: crate::csv::TransactionType::Deposit,
-                    client_id: 1,
-                    transaction_id: 1,
-                    amount: Some(1.0),
-                },
-            },
-        ];
-
-        for (idx, test) in tests.iter().enumerate() {
-            let mut reader = Reader::from_reader(test.csv.as_bytes());
-            for result in reader.deserialize() {
-                let record: Transaction = result.expect("ok");
-                assert_eq!(record, test.transaction, "{idx} - not expected transation");
             }
         }
     }
