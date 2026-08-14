@@ -26,9 +26,7 @@ fn test_apply_corner_cases() {
         Case {
             name: "withdrawal without an existing account fails",
             ops: vec![Transaction::withdrawal(1, 1, 0.5)],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:1, not_enough_balance:0, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions account_not_found:1"),
             expect_row: vec![],
         },
         Case {
@@ -43,9 +41,7 @@ fn test_apply_corner_cases() {
                 Transaction::deposit(1, 1, 1.0),
                 Transaction::withdrawal(1, 2, 2.0),
             ],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:0, not_enough_balance:1, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions withdrawal_error:1"),
             expect_row: vec![("1", "0", "1", "false")],
         },
         Case {
@@ -54,9 +50,7 @@ fn test_apply_corner_cases() {
                 client: 1,
                 transaction_id: 1,
             })],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:1, not_enough_balance:0, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions account_not_found:1"),
             expect_row: vec![],
         },
         Case {
@@ -65,9 +59,7 @@ fn test_apply_corner_cases() {
                 client: 1,
                 transaction_id: 1,
             })],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:1, not_enough_balance:0, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions account_not_found:1"),
             expect_row: vec![],
         },
         Case {
@@ -76,9 +68,7 @@ fn test_apply_corner_cases() {
                 client: 1,
                 transaction_id: 1,
             })],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:1, not_enough_balance:0, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions account_not_found:1"),
             expect_row: vec![],
         },
         Case {
@@ -90,9 +80,7 @@ fn test_apply_corner_cases() {
                     transaction_id: 999,
                 }),
             ],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:0, not_enough_balance:0, transaction_not_found:1",
-            ),
+            expect_err_on_last: Err("errors processing transactions transaction_not_found:1"),
             expect_row: vec![("1", "0", "1", "false")],
         },
         Case {
@@ -124,10 +112,26 @@ fn test_apply_corner_cases() {
                 Transaction::withdrawal(1, 4, 1.5),
                 Transaction::withdrawal(2, 5, 3.0),
             ],
-            expect_err_on_last: Err(
-                "errors processing transactions account_not_found:0, not_enough_balance:1, transaction_not_found:0",
-            ),
+            expect_err_on_last: Err("errors processing transactions withdrawal_error:1"),
             expect_row: vec![("1.5", "0", "1.5", "false"), ("2", "0", "2", "false")],
+        },
+        Case {
+            name: "deposit reusing an existing transaction id fails, first deposit is kept",
+            ops: vec![
+                Transaction::deposit(1, 1, 1.0),
+                Transaction::deposit(1, 1, 5.0),
+            ],
+            expect_err_on_last: Err("errors processing transactions deposit_error:1"),
+            expect_row: vec![("1", "0", "1", "false")],
+        },
+        Case {
+            name: "withdrawal reusing an existing transaction id fails",
+            ops: vec![
+                Transaction::deposit(1, 1, 2.0),
+                Transaction::withdrawal(1, 1, 0.5),
+            ],
+            expect_err_on_last: Err("errors processing transactions withdrawal_error:1"),
+            expect_row: vec![("2", "0", "2", "false")],
         },
     ];
 

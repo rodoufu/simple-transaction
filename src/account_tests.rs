@@ -298,6 +298,30 @@ fn test_dispute_lifecycle() {
             expect_total: 0.5,
             expect_locked: false,
         },
+        Case {
+            name: "depositing with a transaction id that already exists fails",
+            actions: vec![
+                Transaction::deposit(1, 1, 1.0),
+                Transaction::deposit(1, 1, 2.0),
+            ],
+            expect_err_on_last: Err("transaction already exists"),
+            expect_available: 1.0,
+            expect_held: 0.0,
+            expect_total: 1.0,
+            expect_locked: false,
+        },
+        Case {
+            name: "withdrawal reusing an existing transaction id fails",
+            actions: vec![
+                Transaction::deposit(1, 1, 2.0),
+                Transaction::withdrawal(1, 1, 0.5),
+            ],
+            expect_err_on_last: Err("transaction already exists"),
+            expect_available: 2.0,
+            expect_held: 0.0,
+            expect_total: 2.0,
+            expect_locked: false,
+        },
     ];
 
     for case in cases {
@@ -327,4 +351,43 @@ fn test_dispute_lifecycle() {
         assert_eq!(account.total(), case.expect_total, "{} total", case.name);
         assert_eq!(account.locked(), case.expect_locked, "{} locked", case.name);
     }
+}
+
+#[test]
+fn test_resolve_dispute_on_withdrawal_preserves_held_total_invariant() {
+    let mut account = Account::new(1);
+    account.deposit(1, 600).expect("deposit ok");
+    account.deposit(2, 1_000).expect("deposit ok");
+    account.start_dispute(2).expect("dispute on deposit ok");
+    account.withdrawal(3, 500).expect("withdrawal ok");
+    account.start_dispute(3).expect("dispute on withdrawal ok");
+    account.withdrawal(4, 600).expect("withdrawal ok");
+
+    let result = account.resolve_dispute(3);
+    assert!(
+        result.is_err(),
+        "resolving this dispute would push held above total, so it must be rejected"
+    );
+    assert!(
+        account.held() <= account.total(),
+        "invariant violated: held ({}) > total ({})",
+        account.held(),
+        account.total()
+    );
+}
+
+#[test]
+fn test_resolve_dispute_on_withdrawal_succeeds_when_funds_are_available() {
+    let mut account = Account::new(1);
+    account.deposit(1, 1_000).expect("deposit ok");
+    account.deposit(2, 500).expect("deposit ok");
+    account.start_dispute(2).expect("dispute on deposit ok");
+    account.withdrawal(3, 400).expect("withdrawal ok");
+    account.start_dispute(3).expect("dispute on withdrawal ok");
+
+    account.resolve_dispute(3).expect("resolve should succeed");
+
+    assert_eq!(account.total(), 0.11, "total");
+    assert_eq!(account.held(), 0.05, "held");
+    assert_eq!(account.available(), 0.06, "available");
 }

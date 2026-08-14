@@ -40,6 +40,7 @@ fn main() -> Result<()> {
         convert_error,
         err = ?result.err(),
         ?processing_time,
+        processing_time_per_tx=?processing_time.checked_div(processed_lines).unwrap_or_default(),
         "finished applying transactions"
     );
 

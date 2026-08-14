@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
 use crate::{ClientId, TransactionId};
 use anyhow::{Context, Result};
+use rustc_hash::FxHashMap;
 
 /// Multiplier used to convert the float point numbers from the input into integer.
 pub(super) const ACCOUNT_MULTIPLIER: f64 = 1e4;
@@ -37,14 +36,14 @@ pub enum AccountTransaction {
 /// `ACCOUNT_MULTIPLIER` is used to convert the `f64` to `u64` using the expected precision.
 #[derive(Debug, Clone)]
 pub struct Account {
-    // Client identification
+    /// Client identification
     pub(super) id: ClientId,
 
     total: u64,
     held: u64,
 
     locked: bool,
-    transactions: HashMap<TransactionId, AccountTransaction>,
+    transactions: FxHashMap<TransactionId, AccountTransaction>,
 }
 
 impl Account {
@@ -88,6 +87,11 @@ impl Account {
 
     /// Adds a deposit for the specified parameters.
     pub(crate) fn deposit(&mut self, id: TransactionId, amount: u64) -> Result<()> {
+        anyhow::ensure!(
+            !self.transactions.contains_key(&id),
+            "transaction already exists"
+        );
+
         self.total = self.total.checked_add(amount).context("balance overflow")?;
         self.transactions.insert(
             id,
@@ -104,9 +108,14 @@ impl Account {
     /// The withdrawal will fail if there is no available balance and no change to the balance is applied.
     pub(crate) fn withdrawal(&mut self, id: TransactionId, amount: u64) -> Result<()> {
         anyhow::ensure!(
+            !self.transactions.contains_key(&id),
+            "transaction already exists"
+        );
+        anyhow::ensure!(
             self.available_u64() >= amount,
             "not enough balance for withdrawal"
         );
+
         self.total = self
             .total
             .checked_sub(amount)
@@ -186,7 +195,10 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::DisputeInitiated),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
+                anyhow::ensure!(
+                    self.total - self.held >= *amount,
+                    "not enough balance for dispute"
+                );
                 self.held = self.held.checked_add(*amount).context("held overflow")?;
                 *dispute = AccountTransactionDisppute::Resolved;
             }
@@ -210,7 +222,7 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::Resolved),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
+                anyhow::ensure!(self.total >= *amount, "not enough balance for chargeback");
                 self.total = self
                     .total
                     .checked_sub(*amount)
@@ -225,7 +237,7 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::Resolved),
                     "there is not a dispute for transaction"
                 );
-                anyhow::ensure!(self.total >= *amount, "not enough held for dispute");
+                anyhow::ensure!(self.total >= *amount, "not enough balance for chargeback");
                 self.total = self.total.checked_add(*amount).context("total overflow")?;
                 *dispute = AccountTransactionDisppute::ChargeBackOccurred;
                 self.locked = true;

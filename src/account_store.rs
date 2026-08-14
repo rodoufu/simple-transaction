@@ -106,9 +106,11 @@ impl AccountStore {
         transactions: T,
     ) -> Result<()> {
         let mut shard_locker = ShardLocker::new(&self.shards);
+
         let mut account_not_found = 0;
-        let mut not_enough_balance = 0;
         let mut transaction_not_found = 0;
+        let mut deposit_error = 0;
+        let mut withdrawal_error = 0;
 
         for transaction in transactions {
             match transaction {
@@ -130,13 +132,13 @@ impl AccountStore {
                         Some(account) => {
                             let _ = account
                                 .deposit(transaction_id, amount)
-                                .inspect_err(|_| not_enough_balance += 1);
+                                .inspect_err(|_| deposit_error += 1);
                         }
                         None => {
                             let mut new_account = Account::new(client);
                             let _ = new_account
                                 .deposit(transaction_id, amount)
-                                .inspect_err(|_| not_enough_balance += 1);
+                                .inspect_err(|_| deposit_error += 1);
                             *account = Some(new_account);
                         }
                     }
@@ -162,7 +164,7 @@ impl AccountStore {
                     };
                     let _ = account
                         .withdrawal(transaction_id, amount)
-                        .inspect_err(|_| not_enough_balance += 1);
+                        .inspect_err(|_| withdrawal_error += 1);
                 }
                 Transaction::Dispute(dispute) => {
                     let (shard_number, index_within_shard) =
@@ -214,10 +216,20 @@ impl AccountStore {
                 }
             }
         }
-        anyhow::ensure!(
-            account_not_found == 0 && not_enough_balance == 0 && transaction_not_found == 0,
-            "errors processing transactions account_not_found:{account_not_found}, not_enough_balance:{not_enough_balance}, transaction_not_found:{transaction_not_found}"
-        );
+        let mut error = String::new();
+        if account_not_found != 0 {
+            error.push_str(&format!(" account_not_found:{account_not_found}"));
+        }
+        if transaction_not_found != 0 {
+            error.push_str(&format!(" transaction_not_found:{transaction_not_found}"));
+        }
+        if deposit_error != 0 {
+            error.push_str(&format!(" deposit_error:{deposit_error}"));
+        }
+        if withdrawal_error != 0 {
+            error.push_str(&format!(" withdrawal_error:{withdrawal_error}"));
+        }
+        anyhow::ensure!(error.is_empty(), "errors processing transactions{error}");
 
         Ok(())
     }
