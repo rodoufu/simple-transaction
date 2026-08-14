@@ -2,7 +2,7 @@ use serde::Deserialize;
 #[cfg(test)]
 use serde::Serialize;
 
-use crate::TransactionId;
+use crate::{ClientId, TransactionId};
 
 #[cfg_attr(test, derive(Serialize, PartialEq, Eq))]
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -15,18 +15,20 @@ pub(crate) enum TransactionType {
     Chargeback,
 }
 
+/// Represents each line of the CSV used as input.
 #[cfg_attr(test, derive(Serialize, PartialEq))]
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Transaction {
     #[serde(rename = "type")]
     pub(super) transaction_type: TransactionType,
     #[serde(rename = "client")]
-    pub(super) client_id: u16,
+    pub(super) client_id: ClientId,
     #[serde(rename = "tx")]
     pub(super) transaction_id: TransactionId,
     pub(super) amount: Option<f64>,
 }
 
+/// Converting the CSV lines into internaly transactions.
 impl TryFrom<Transaction> for crate::Transaction {
     type Error = anyhow::Error;
 

@@ -53,7 +53,7 @@ fn test_deposit() {
             else {
                 panic!("unexpected test");
             };
-            account.deposit(transaction_id, amount);
+            account.deposit(transaction_id, amount).expect("ok");
         }
 
         assert_eq!(
@@ -112,7 +112,7 @@ fn test_withdrawal() {
     for case in cases {
         let mut account = Account::new(1);
         if case.initial_deposit > 0 {
-            account.deposit(1, case.initial_deposit);
+            account.deposit(1, case.initial_deposit).expect("ok");
         }
 
         let result = account
@@ -137,10 +137,7 @@ fn test_dispute_lifecycle() {
                 transaction_id,
                 amount,
                 ..
-            } => {
-                account.deposit(transaction_id, amount);
-                Ok(())
-            }
+            } => account.deposit(transaction_id, amount),
             Transaction::Withdrawal {
                 transaction_id,
                 amount,

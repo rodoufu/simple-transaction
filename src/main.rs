@@ -11,10 +11,14 @@ fn main() -> Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
-    anyhow::ensure!(args.len() == 2, "only one param is expected");
+    anyhow::ensure!(
+        args.len() == 2,
+        "only one param with the input CSV file name is expected"
+    );
 
     let mut reader = csv::ReaderBuilder::new()
         .trim(csv::Trim::All)
+        .flexible(true)
         .from_path(args.get(1).context("file name not provided")?)?;
 
     let account_store = AccountStore::default();

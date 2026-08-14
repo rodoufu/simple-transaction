@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{ClientId, TransactionId};
 use anyhow::{Context, Result};
 
+/// Multiplier used to convert the float point numbers from the input into integer.
 pub(super) const ACCOUNT_MULTIPLIER: f64 = 1e4;
 
+/// Specify the state of a transaction within an account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AccountTransactionDisppute {
     #[default]
@@ -12,6 +16,7 @@ pub enum AccountTransactionDisppute {
     ChargeBackOccurred,
 }
 
+/// Transaction within an account with its state information.
 #[derive(Debug, Clone, Copy)]
 pub enum AccountTransaction {
     Deposit {
@@ -24,15 +29,6 @@ pub enum AccountTransaction {
         amount: u64,
         dispute: AccountTransactionDisppute,
     },
-}
-
-impl AccountTransaction {
-    pub(super) fn id(&self) -> TransactionId {
-        match self {
-            Self::Deposit { id, .. } => *id,
-            Self::Withdrawal { id, .. } => *id,
-        }
-    }
 }
 
 /// Account represents the data for eache client.
@@ -48,7 +44,7 @@ pub struct Account {
     held: u64,
 
     locked: bool,
-    transactions: Vec<AccountTransaction>,
+    transactions: HashMap<TransactionId, AccountTransaction>,
 }
 
 impl Account {
@@ -65,7 +61,11 @@ impl Account {
     /// The total funds that are available for trading, staking, withdrawal, etc.
     /// This should be equal to the total - held amounts
     pub(crate) fn available(&self) -> f64 {
-        (self.total - self.held) as f64 / ACCOUNT_MULTIPLIER
+        self.available_u64() as f64 / ACCOUNT_MULTIPLIER
+    }
+
+    fn available_u64(&self) -> u64 {
+        self.total - self.held
     }
 
     /// The total funds that are held for dispute.
@@ -86,33 +86,49 @@ impl Account {
         self.locked
     }
 
-    pub(crate) fn deposit(&mut self, id: TransactionId, amount: u64) {
-        self.total += amount;
-        self.transactions.push(AccountTransaction::Deposit {
+    /// Adds a deposit for the specified parameters.
+    pub(crate) fn deposit(&mut self, id: TransactionId, amount: u64) -> Result<()> {
+        self.total = self.total.checked_add(amount).context("balance overflow")?;
+        self.transactions.insert(
             id,
-            amount,
-            dispute: AccountTransactionDisppute::None,
-        });
-    }
-
-    pub(crate) fn withdrawal(&mut self, id: TransactionId, amount: u64) -> Result<()> {
-        anyhow::ensure!(self.total >= amount, "not enough balance for withdrawal");
-        self.total -= amount;
-        self.transactions.push(AccountTransaction::Withdrawal {
-            id,
-            amount,
-            dispute: AccountTransactionDisppute::None,
-        });
+            AccountTransaction::Deposit {
+                id,
+                amount,
+                dispute: AccountTransactionDisppute::None,
+            },
+        );
         Ok(())
     }
 
+    /// Adds a withdrawal for the specified parameters.
+    /// The withdrawal will fail if there is no available balance and no change to the balance is applied.
+    pub(crate) fn withdrawal(&mut self, id: TransactionId, amount: u64) -> Result<()> {
+        anyhow::ensure!(
+            self.available_u64() >= amount,
+            "not enough balance for withdrawal"
+        );
+        self.total = self
+            .total
+            .checked_sub(amount)
+            .context("balance underflow")?;
+        self.transactions.insert(
+            id,
+            AccountTransaction::Withdrawal {
+                id,
+                amount,
+                dispute: AccountTransactionDisppute::None,
+            },
+        );
+        Ok(())
+    }
+
+    /// Starts a dispute for a specified transaction.
+    /// If the transaction is not found the dispute fails.
     pub(crate) fn start_dispute(&mut self, transaction_id: TransactionId) -> Result<()> {
         let transaction = self
             .transactions
-            .iter_mut()
-            .find(|x| x.id() == transaction_id)
+            .get_mut(&transaction_id)
             .context("transaction not found for dispute")?;
-
         match transaction {
             AccountTransaction::Deposit {
                 amount, dispute, ..
@@ -121,8 +137,11 @@ impl Account {
                     matches!(dispute, AccountTransactionDisppute::None),
                     "there is already a dispute for transaction"
                 );
-                anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
-                self.held += *amount;
+                anyhow::ensure!(
+                    self.total - self.held >= *amount,
+                    "not enough balance for dispute"
+                );
+                self.held = self.held.checked_add(*amount).context("held overflow")?;
                 *dispute = AccountTransactionDisppute::DisputeInitiated;
             }
             AccountTransaction::Withdrawal {
@@ -133,18 +152,19 @@ impl Account {
                     "there is already a dispute for transaction"
                 );
                 anyhow::ensure!(self.held >= *amount, "not enough held for dispute");
-                self.held -= *amount;
+                self.held = self.held.checked_sub(*amount).context("held underflow")?;
                 *dispute = AccountTransactionDisppute::DisputeInitiated;
             }
         }
         Ok(())
     }
 
+    // Resolve a dispute.
+    /// If the transaction is not found or has not a dispute already started the dispute resolve fails.
     pub(crate) fn resolve_dispute(&mut self, transaction_id: TransactionId) -> Result<()> {
         let transaction = self
             .transactions
-            .iter_mut()
-            .find(|x| x.id() == transaction_id)
+            .get_mut(&transaction_id)
             .context("transaction not found to resolve dispute")?;
 
         match transaction {
@@ -156,7 +176,7 @@ impl Account {
                     "there is not a dispute for transaction"
                 );
                 anyhow::ensure!(self.held >= *amount, "not enough balance for dispute");
-                self.held -= *amount;
+                self.held = self.held.checked_sub(*amount).context("held underflow")?;
                 *dispute = AccountTransactionDisppute::Resolved;
             }
             AccountTransaction::Withdrawal {
@@ -167,18 +187,19 @@ impl Account {
                     "there is not a dispute for transaction"
                 );
                 anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
-                self.held += *amount;
+                self.held = self.held.checked_add(*amount).context("held overflow")?;
                 *dispute = AccountTransactionDisppute::Resolved;
             }
         }
         Ok(())
     }
 
+    /// Process a chargeback.
+    /// If the transaction is not found or has not a dispute resolved already the chargeback fails.
     pub(crate) fn chargeback(&mut self, transaction_id: TransactionId) -> Result<()> {
         let transaction = self
             .transactions
-            .iter_mut()
-            .find(|x| x.id() == transaction_id)
+            .get_mut(&transaction_id)
             .context("transaction not found for chargeback")?;
 
         match transaction {
@@ -190,7 +211,10 @@ impl Account {
                     "there is not a dispute for transaction"
                 );
                 anyhow::ensure!(self.total >= *amount, "not enough balance for dispute");
-                self.total -= *amount;
+                self.total = self
+                    .total
+                    .checked_sub(*amount)
+                    .context("balance underflow")?;
                 *dispute = AccountTransactionDisppute::ChargeBackOccurred;
                 self.locked = true;
             }
@@ -202,7 +226,7 @@ impl Account {
                     "there is not a dispute for transaction"
                 );
                 anyhow::ensure!(self.total >= *amount, "not enough held for dispute");
-                self.total += *amount;
+                self.total = self.total.checked_add(*amount).context("total overflow")?;
                 *dispute = AccountTransactionDisppute::ChargeBackOccurred;
                 self.locked = true;
             }

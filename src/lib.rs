@@ -15,27 +15,30 @@ mod lib_tests;
 pub type ClientId = u16;
 pub type TransactionId = u32;
 
+/// Represents the content of a dispute.
 #[allow(dead_code)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Dispute {
-    client: u16,
+    client: ClientId,
     transaction_id: TransactionId,
 }
 
+/// Represents the content of a dispute resolution.
 #[allow(dead_code)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Resolve {
-    client: u16,
+    client: ClientId,
     transaction_id: TransactionId,
 }
 
+/// Represents the content of a chargeback.
 #[allow(dead_code)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone, Copy)]
 pub struct Chargeback {
-    client: u16,
+    client: ClientId,
     transaction_id: TransactionId,
 }
 
@@ -45,7 +48,7 @@ pub enum Transaction {
     /// A deposit is a credit to the client's asset account, meaning it should increase the available and
     /// total funds of the client account
     Deposit {
-        client: u16,
+        client: ClientId,
         transaction_id: TransactionId,
         amount: u64,
     },
@@ -54,7 +57,7 @@ pub enum Transaction {
     /// If a client does not have sufficient available funds the withdrawal should fail and the total amount
     /// of funds should not change
     Withdrawal {
-        client: u16,
+        client: ClientId,
         transaction_id: TransactionId,
         amount: u64,
     },
