@@ -79,14 +79,13 @@ Only unrecoverable conditions (bad CLI args, an unreadable input file) stop the 
 
 ### Built to be usable from multiple threads, even though nothing here needs that yet
 
-The CLI entry point is single-threaded — one file in, one `apply_transactions` call, one
+The CLI entry point is single-threaded, one file in, one `apply_transactions` call, one
 CSV out, so thread-safety is not a functional requirement for this program.
 But the spec explicitly raises the question of what happens if this were bundled into a
 server handling many concurrent transaction streams, so `AccountStore` was deliberately
 designed to make that a non-issue rather than a rewrite:
 
-- Client accounts are partitioned into 128 shards by client id, each behind its own
-  `RwLock`.
+- Client accounts are partitioned into 128 shards by client id, each behind its own `RwLock`.
   `AccountStore` only needs a `&self` (not `&mut self`) to apply transactions,
   so an `Arc<AccountStore>` can be cloned across threads/tasks and have
   `apply_transactions` called concurrently on it, each thread only ever contends with
@@ -96,6 +95,10 @@ designed to make that a non-issue rather than a rewrite:
   releasing/re-acquiring on every single transaction, a small win when a batch happens
   to be grouped by client or different clients in the same shard,
   and no worse than a per-transaction lock otherwise.
+
+Initially I considered using a `HashMap<ClientId, Account>` for the (maybe `dashmap` for concurrency),
+but since the `ClientId` was small enough I decided to avoid the indirections of a `HashMap` and the hashing function,
+since those could dominate the CPU time with very high load.
 
 ### CSV parsing matches the spec's documented format exactly
 
@@ -136,6 +139,11 @@ Performance possible improvements:
   That is basically an Array of Strucutres (AoS), considering the possibility of multiple transactions affecting more often
   only the total (deposits/withdrawals), a possible optimization would be to try using a Struct of Arrays (SoA),
   which can improve cache hits, increase performance with better usage of prefetching.
+- For scenarios where we do not have too many transactions by client one could test using a 
+  `transactions: SmallVec<[AccountTransaction; SelectedSize]>` instead of `transactions: FxHashMap<TransactionId, AccountTransaction>`,
+  that would give a stack allocated vector, less memory indirections, and possibly more cache friendly,
+  but would require to iterate over all values to find transactions.
+
    
 
 ## Testing
